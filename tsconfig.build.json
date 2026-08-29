@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /*
+     * The published package is JavaScript, not TypeScript, and that is a
+     * decision about whose build breaks.
+     *
+     * Next.js does not compile anything inside `node_modules`. Its own
+     * documentation for `transpilePackages` says so in as many words, and
+     * offers exactly two ways out: every customer adds
+     * `transpilePackages: ["@pokoblog/next"]` to their `next.config`, or the
+     * package ships compiled output and points `exports` at it. Shipping the
+     * source would mean `npm i @pokoblog/next` followed by a parse error, and
+     * the fix living in a line of our README that nobody reads until their
+     * build is already red.
+     *
+     * `.d.ts` alongside, so the customer keeps the types the source had.
+     */
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

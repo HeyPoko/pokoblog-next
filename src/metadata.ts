@@ -1,4 +1,4 @@
-import type { Article, ArticleBody } from "./types";
+import type { Article, ArticleBody } from "./types.js";
 import type { Metadata } from "next";
 
 /**

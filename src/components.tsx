@@ -1,6 +1,6 @@
 import "server-only";
-import type { PokoBlogClient } from "./client";
-import type { Article, ArticleBody } from "./types";
+import type { PokoBlogClient } from "./client.js";
+import type { Article, ArticleBody } from "./types.js";
 import type { ReactNode } from "react";
 
 /**

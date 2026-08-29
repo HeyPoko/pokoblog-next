@@ -1,4 +1,4 @@
-import type { ApiError, Article, ArticleBody, ArticlePage } from "./types";
+import type { ApiError, Article, ArticleBody, ArticlePage } from "./types.js";
 
 /**
  * Reading a PokoBlog blog from a Next.js server component.
