@@ -45,5 +45,13 @@
     "react-dom": "19.2.8",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HeyPoko/pokoblog-next.git"
+  },
+  "homepage": "https://github.com/HeyPoko/pokoblog-next#readme",
+  "bugs": {
+    "url": "https://github.com/HeyPoko/pokoblog-next/issues"
   }
 }
