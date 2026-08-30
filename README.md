@@ -142,6 +142,88 @@ export async function generateStaticParams() {
 published while it runs lands in front of the walk and arrives on the next
 build.
 
+## If you turn on Cache Components
+
+`cacheComponents: true` is opt-in in Next 16, and the examples above **do not
+build** with it on. It is not a subtle failure — `next build` stops:
+
+```
+Error: Route "/blog/[slug]": Next.js encountered uncached or runtime data
+during prerendering.
+```
+
+Two things cause it, and neither is the `fetch` caching being wrong. Under Cache
+Components only `use cache` counts as cached for prerendering; the Data Cache
+this package uses still caches, but it does not satisfy the prerender check. And
+`await params` in a dynamic route is itself runtime data.
+
+So: wrap the data access, and give the route its params.
+
+```tsx
+// app/blog/page.tsx
+import { cacheLife, cacheTag } from "next/cache";
+import { ArticleList } from "@pokoblog/next";
+
+import { poko } from "@/lib/pokoblog";
+
+async function CachedList() {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("pokoblog");
+
+  return <ArticleList client={poko} limit={20} />;
+}
+
+export default function BlogIndex() {
+  return <CachedList />;
+}
+```
+
+```tsx
+// app/blog/[slug]/page.tsx — the parts that change
+async function getArticle(slug: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("pokoblog", `pokoblog:${slug}`);
+
+  try {
+    return await poko.article(slug);
+  } catch (failure) {
+    if (failure instanceof PokoBlogNotFoundError) return null;
+
+    throw failure;
+  }
+}
+
+export async function generateStaticParams() {
+  return (await poko.slugs()).map((slug) => ({ slug }));
+}
+
+export default async function ArticlePage({ params }: Props) {
+  const { slug } = await params;
+  const article = await getArticle(slug);
+
+  if (!article) notFound();
+
+  return <ArticleView article={article} />;
+}
+```
+
+`notFound()` moves **outside** the cached function, which is why `getArticle`
+returns `null` rather than throwing: `notFound()` works by throwing, and a
+cached scope is the wrong place to do that.
+
+`generateMetadata` calls the same `getArticle`, so the article is fetched once
+for both. That is not only tidier — under Cache Components, uncached data in
+`generateMetadata` is an error of its own.
+
+Worth the trade: every article then prerenders as static HTML rather than being
+generated on the first request, which is what you want for pages whose audience
+is crawlers.
+
+`cacheTag` still pairs with the webhook below; `cacheLife("minutes")` replaces
+the client's `revalidate`, which the cached scope no longer consults.
+
 ## Dropping the cache when PokoBlog publishes
 
 ```ts

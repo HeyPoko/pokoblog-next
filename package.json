@@ -1,6 +1,6 @@
 {
   "name": "@pokoblog/next",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Server components and metadata helpers for rendering a PokoBlog blog in Next.js.",
   "license": "MIT",
   "files": [
