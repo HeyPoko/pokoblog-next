@@ -67,7 +67,99 @@ one.
 
 `ArticleList` renders semantic HTML with no styling and no class names of ours,
 because a blog index has to look like the site it is in. Pass `className`, or
-`renderItem` to replace the card entirely; the `<li>` and the paging stay ours.
+`renderItem` to replace the card entirely; the `<li>` stays ours.
+
+## Paging
+
+`limit` is a page, not a cap on the blog. Past twenty articles the index above
+shows the newest twenty and the rest are unreachable.
+
+Use a page number, which is what a reader sees and the only thing you can build
+a real pager from:
+
+```tsx
+// app/blog/page.tsx
+import { ArticleList } from "@pokoblog/next";
+
+import { poko } from "@/lib/pokoblog";
+
+type Props = { searchParams: Promise<{ page?: string }> };
+
+const href = (n: number) => (n === 1 ? "/blog" : `/blog?page=${n}`);
+
+export default async function BlogIndex({ searchParams }: Props) {
+  const asked = Number((await searchParams).page);
+  const current = Number.isInteger(asked) && asked > 0 ? asked : 1;
+
+  return (
+    <ArticleList
+      client={poko}
+      limit={20}
+      page={current}
+      renderPagination={({ page, pages }) => {
+        if (pages < 2 || page === null) return null;
+
+        return (
+          <nav aria-label="Pagination">
+            {page > 1 ? (
+              <a href={href(page - 1)} rel="prev">
+                Newer
+              </a>
+            ) : null}
+
+            {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+              <a
+                key={n}
+                href={href(n)}
+                aria-current={n === page ? "page" : undefined}
+              >
+                {n}
+              </a>
+            ))}
+
+            {page < pages ? (
+              <a href={href(page + 1)} rel="next">
+                Older
+              </a>
+            ) : null}
+          </nav>
+        );
+      }}
+    />
+  );
+}
+```
+
+`renderPagination` receives `{ page, pages, total, nextCursor, prevCursor }`.
+`pages` is what lets a numbered pager draw itself; a cursor cannot tell you how
+many pages there are, so `1 2 3 … 12` is only buildable from these.
+
+It is a render prop rather than markup of ours because paging is navigation in
+your site: only you know whether page two lives at `?page=2`, `/blog/page/2`, or
+behind a router push. Leave it out and no links are rendered, which is right for
+an index that deliberately shows one page.
+
+### Cursors, for walking the whole blog
+
+`cursor` and `before` are still there and are the right tool for
+`generateStaticParams`, a sitemap, or an append-only "load more". An offset
+shifts if an article publishes while you page, so a walk can repeat or miss one;
+`cursor` means "after this exact article" and cannot. For a blog index the shift
+is one article appearing on two pages once a day, which is a fair price for a
+URL a reader can share.
+
+### Two details worth getting right
+
+A page past the end is an empty list with an honest `pages`, not an error —
+redirect or say so rather than showing a blank screen.
+
+Canonicalise a paged URL **to itself**. `/blog?page=2` should carry
+`<link rel="canonical" href="…/blog?page=2">`, not one pointing at page one:
+that asks Google to drop every page but the first, and the articles listed only
+on them go with it.
+
+`limit` is 1 to 50. Above 50 the API answers `422` rather than clamping, so a
+typo is an error you see rather than a page quietly missing articles.
 
 ## One article, with its metadata
 
@@ -129,6 +221,60 @@ text the author wrote, and a Twitter card sized to whether there is a picture at
 all. It falls back from the meta description to the excerpt — they are different
 fields on purpose, but a page with no description at all gets whatever sentence
 a search engine picks out of the body.
+
+## The sitemap
+
+Every article, not one page of them. `limit` bounds a request; `articles()`
+bounds nothing — it pages until there is nothing left.
+
+```ts
+// app/sitemap.ts
+import { poko } from "@/lib/pokoblog";
+
+import type { MetadataRoute } from "next";
+
+const SITE = "https://example.com";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const entries: MetadataRoute.Sitemap = [
+    { url: `${SITE}/blog`, lastModified: new Date() },
+  ];
+
+  for await (const article of poko.articles()) {
+    entries.push({
+      url: `${SITE}/blog/${article.slug}`,
+      lastModified: article.modified,
+    });
+  }
+
+  return entries;
+}
+```
+
+`modified` is the article's last write, which is what `lastmod` means. Do not
+use `published` — a corrected article keeps its publish date and a crawler told
+nothing changed will not come back for it.
+
+**Cache it.** Without caching this route is `ƒ Dynamic` and every crawler hit
+re-walks the whole blog. Under Cache Components:
+
+```ts
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("pokoblog");
+  // …
+}
+```
+
+That turns it into a `○ Static` route revalidating hourly, and it shares the
+`pokoblog` tag with the index — so the publish webhook's `revalidateTag` drops
+both and a new article is in the sitemap as soon as it is published. Without
+Cache Components, `export const revalidate = 3600` does the same job.
+
+Use the cursor walk here rather than `?page=`: an offset can repeat or miss an
+article if something publishes mid-walk, and a sitemap that quietly omits one is
+the kind of bug nobody notices.
 
 ## Static generation
 
@@ -223,6 +369,42 @@ is crawlers.
 
 `cacheTag` still pairs with the webhook below; `cacheLife("minutes")` replaces
 the client's `revalidate`, which the cached scope no longer consults.
+
+### Paging under Cache Components
+
+A pager reads `searchParams`, which is runtime data — so the build refuses to
+prerender the route unless that read sits inside `<Suspense>`:
+
+```tsx
+import { Suspense } from "react";
+
+async function Paged({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const asked = Number((await searchParams).page);
+
+  return <CachedList page={Number.isInteger(asked) && asked > 0 ? asked : 1} />;
+}
+
+export default function BlogIndex({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  return (
+    <Suspense fallback={<p>Loading…</p>}>
+      <Paged searchParams={searchParams} />
+    </Suspense>
+  );
+}
+```
+
+Without the boundary: `Route "/blog": Next.js encountered uncached or runtime
+data during prerendering`. With it, the shell prerenders and the list streams
+in — which is what a pager actually is. Give `CachedList` the page number as an
+argument so each page gets its own cache entry.
 
 ## Dropping the cache when PokoBlog publishes
 

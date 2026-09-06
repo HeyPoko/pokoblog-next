@@ -35,8 +35,50 @@ import type { ReactNode } from "react";
 
 export interface ArticleListProps {
   readonly client: PokoBlogClient;
-  /** How many to show. Defaults to the API's page size of 50. */
+  /** How many to show. 1 to 50; defaults to the API's page size of 50. */
   readonly limit?: number;
+  /**
+   * Which page: a `nextCursor` from the page before this one.
+   *
+   * `| undefined` explicitly, and not for tidiness. This value comes from
+   * `searchParams` in every real use, where it is `string | undefined`, and
+   * under `exactOptionalPropertyTypes` a bare `?:` rejects exactly that --
+   * so the obvious line in the customer's own page would not compile.
+   */
+  readonly cursor?: string | undefined;
+  /** Which page, going the other way: a `prevCursor`. Not with `cursor`. */
+  readonly before?: string | undefined;
+  /**
+   * A page number, 1-based, for a numbered pager.
+   *
+   * The alternative to the two cursors, and the one a reader sees. Cursors can
+   * only answer "what comes next", so "1 2 3 ... 12" and a jump to page seven
+   * are only possible with this.
+   */
+  readonly page?: number | undefined;
+  /**
+   * Render the links to the pages either side of this one.
+   *
+   * A render prop and not markup of ours, because paging links are navigation
+   * in the customer's own site: only they know whether the page lives at
+   * `?cursor=`, `/blog/page/2`, or somewhere else entirely. Both cursors are
+   * `null` at their respective ends, so a caller can render one link, two, or
+   * none from the same function.
+   *
+   * Omitting it renders no links, which is right for an index that shows one
+   * page on purpose -- and wrong the moment the blog outgrows `limit`, which is
+   * why the README leads with it.
+   */
+  readonly renderPagination?: (page: {
+    readonly nextCursor: string | null;
+    readonly prevCursor: string | null;
+    /** Which page this is, or null when it was reached by cursor. */
+    readonly page: number | null;
+    /** How many pages exist, so a numbered pager can draw itself. */
+    readonly pages: number;
+    /** How many published articles there are in total. */
+    readonly total: number;
+  }) => ReactNode;
   /** Where an article lives on your site. Defaults to `/blog/<slug>`. */
   readonly href?: (article: Article) => string;
   /** Replace the whole card. The `<li>` is still ours. */
@@ -56,16 +98,32 @@ export interface ArticleListProps {
 export async function ArticleList({
   client,
   limit,
+  cursor,
+  before,
+  page,
   href = (article) => `/blog/${article.slug}`,
   renderItem,
   empty,
+  renderPagination,
   className,
 }: ArticleListProps) {
-  const { articles } = await client.page(limit === undefined ? {} : { limit });
+  const {
+    articles,
+    nextCursor,
+    prevCursor,
+    page: at,
+    pages,
+    total,
+  } = await client.page({
+    ...(limit === undefined ? {} : { limit }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(before === undefined ? {} : { before }),
+    ...(page === undefined ? {} : { page }),
+  });
 
   if (articles.length === 0 && empty !== undefined) return <>{empty}</>;
 
-  return (
+  const list = (
     <ul className={className}>
       {articles.map((article) => (
         <li key={article.slug}>
@@ -101,6 +159,17 @@ export async function ArticleList({
         </li>
       ))}
     </ul>
+  );
+
+  if (!renderPagination) return list;
+
+  /* A fragment rather than a wrapper element: this component's markup is the
+     customer's to lay out, and a div of ours here is one they cannot remove. */
+  return (
+    <>
+      {list}
+      {renderPagination({ nextCursor, prevCursor, page: at, pages, total })}
+    </>
   );
 }
 
@@ -148,7 +217,18 @@ export function ArticleView({
         <img src={article.image} alt={article.imageAlt ?? ""} />
       ) : null}
       {children}
-      <div dangerouslySetInnerHTML={{ __html: article.html }} />
+      {/*
+        `poko-body` is what PokoBlog's own stylesheet is scoped to. An article
+        can carry a comparison table wider than a phone and a shell command
+        longer than the column, and without a rule that gives them somewhere to
+        scroll they push the whole page sideways. Load the sheet from
+        `/api/connectors/article.css`, or write your own against these class
+        names -- the class costs nothing if you do neither.
+      */}
+      <div
+        className="poko-body"
+        dangerouslySetInnerHTML={{ __html: article.html }}
+      />
     </article>
   );
 }

@@ -37,7 +37,7 @@ import type { ApiError, Article, ArticleBody, ArticlePage } from "./types.js";
 
 /** The API's own default page size, and its ceiling. Outside 1..100 is a 422. */
 export const PAGE = 50;
-export const MAX_PAGE = 100;
+export const MAX_PAGE = 50;
 
 export interface PokoBlogOptions {
   /** The origin PokoBlog is served from, e.g. `https://app.example.com`. */
@@ -89,7 +89,12 @@ export interface PokoBlogClient {
   /** One page of articles, newest first. */
   readonly page: (options?: {
     readonly limit?: number;
+    /** Where to resume, towards older articles. */
     readonly cursor?: string;
+    /** Where to resume, towards newer ones. Not with `cursor`. */
+    readonly before?: string;
+    /** A page number, 1-based. Not with `cursor` or `before`. */
+    readonly page?: number;
   }) => Promise<ArticlePage>;
   /** Every article, paging handled. Lazy: stop reading and it stops fetching. */
   readonly articles: (options?: {
@@ -102,6 +107,8 @@ export interface PokoBlogClient {
   readonly listUrl: (options?: {
     readonly limit?: number;
     readonly cursor?: string;
+    readonly before?: string;
+    readonly page?: number;
   }) => string;
   readonly articleUrl: (slug: string) => string;
 }
@@ -129,10 +136,19 @@ export const createPokoBlog = ({
   const listUrl = ({
     limit = PAGE,
     cursor,
-  }: { readonly limit?: number; readonly cursor?: string } = {}) => {
+    before,
+    page: number,
+  }: {
+    readonly limit?: number;
+    readonly cursor?: string;
+    readonly before?: string;
+    readonly page?: number;
+  } = {}) => {
     const query = new URLSearchParams({ limit: String(limit) });
 
     if (cursor !== undefined) query.set("cursor", cursor);
+    if (before !== undefined) query.set("before", before);
+    if (number !== undefined) query.set("page", String(number));
 
     return `${endpoint("articles")}?${query.toString()}`;
   };
@@ -172,6 +188,8 @@ export const createPokoBlog = ({
   const page = async (options?: {
     readonly limit?: number;
     readonly cursor?: string;
+    readonly before?: string;
+    readonly page?: number;
   }): Promise<ArticlePage> => asPage(await read(listUrl(options)));
 
   async function* articles({
@@ -325,9 +343,28 @@ const asPage = (value: unknown): ArticlePage => {
   if (nextCursor !== null && typeof nextCursor !== "string")
     throw malformed("a listing");
 
+  /* Tolerated as absent rather than required, so this client still reads a
+     response from an API deployed before `prevCursor` existed. */
+  const prevCursor = value.prevCursor ?? null;
+
+  if (prevCursor !== null && typeof prevCursor !== "string")
+    throw malformed("a listing");
+
+  /* Defaulted rather than required, for the same reason as `prevCursor`: an
+     API deployed before these existed still reads. `pages` falls back to one
+     page holding what arrived, which is true when nothing says otherwise. */
+  const total =
+    typeof value.total === "number" ? value.total : value.articles.length;
+  const pages = typeof value.pages === "number" ? value.pages : 1;
+  const at = typeof value.page === "number" ? value.page : null;
+
   return {
     articles: value.articles.map(asArticle),
     nextCursor,
+    prevCursor,
+    page: at,
+    pages,
+    total,
   };
 };
 

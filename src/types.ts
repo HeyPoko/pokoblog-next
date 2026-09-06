@@ -52,11 +52,19 @@ export interface ArticleBody extends Article {
   readonly markdown: string | null;
 }
 
-/** One page of the list, and where the next one starts. */
+/** One page of the list, and where the pages either side of it start. */
 export interface ArticlePage {
   readonly articles: readonly Article[];
-  /** `null` on the last page, and never absent. */
+  /** Older than this page. `null` on the last one, and never absent. */
   readonly nextCursor: string | null;
+  /** Newer than this page. `null` on the first one, and never absent. */
+  readonly prevCursor: string | null;
+  /** Which page this is, or `null` when it was reached by cursor. */
+  readonly page: number | null;
+  /** How many pages exist at this `limit`. At least 1. */
+  readonly pages: number;
+  /** How many published articles the site has. */
+  readonly total: number;
 }
 
 /** The error body every non-2xx on this API carries. */

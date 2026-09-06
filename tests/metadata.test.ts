@@ -101,24 +101,24 @@ describe("the head of an article page", () => {
   it("names one canonical address so the same article is not indexed twice", () => {
     const metadata = articleMetadata({
       article,
-      url: "https://disrex.nl/blog/onderhoud",
+      url: "https://bureau.test/blog/onderhoud",
     });
 
     expect(metadata.alternates?.canonical).toBe(
-      "https://disrex.nl/blog/onderhoud",
+      "https://bureau.test/blog/onderhoud",
     );
-    expect(metadata.openGraph?.url).toBe("https://disrex.nl/blog/onderhoud");
+    expect(metadata.openGraph?.url).toBe("https://bureau.test/blog/onderhoud");
   });
 
   it("carries the site name and locale when the site gives them", () => {
     const metadata = articleMetadata({
       article,
-      siteName: "Disrex",
+      siteName: "Bureau",
       locale: "nl_NL",
     });
 
     expect(metadata.openGraph).toMatchObject({
-      siteName: "Disrex",
+      siteName: "Bureau",
       locale: "nl_NL",
     });
   });
